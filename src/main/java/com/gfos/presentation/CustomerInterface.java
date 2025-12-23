@@ -21,6 +21,8 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -110,18 +112,20 @@ public class CustomerInterface {
 
             String resourcePath = "/public" + path;
             try (InputStream input = CustomerInterface.class.getResourceAsStream(resourcePath)) {
-                if (input == null) {
-                    respondText(exchange, 404, "Not found", "text/plain");
+                if (input != null) {
+                    writeResponse(exchange, input.readAllBytes(), guessContentType(path));
                     return;
                 }
-                byte[] bytes = input.readAllBytes();
-                String contentType = guessContentType(path);
-                exchange.getResponseHeaders().set("Content-Type", contentType + "; charset=utf-8");
-                exchange.sendResponseHeaders(200, bytes.length);
-                try (OutputStream os = exchange.getResponseBody()) {
-                    os.write(bytes);
-                }
             }
+
+            Path filePath = Path.of("src/main/resources/public" + path).normalize();
+            if (Files.exists(filePath) && !Files.isDirectory(filePath)) {
+                byte[] bytes = Files.readAllBytes(filePath);
+                writeResponse(exchange, bytes, guessContentType(path));
+                return;
+            }
+
+            respondText(exchange, 404, "Not found", "text/plain");
         }
 
         private String guessContentType(String path) {
@@ -135,6 +139,14 @@ public class CustomerInterface {
                 return "image/svg+xml";
             }
             return "text/html";
+        }
+
+        private void writeResponse(HttpExchange exchange, byte[] bytes, String contentType) throws IOException {
+            exchange.getResponseHeaders().set("Content-Type", contentType + "; charset=utf-8");
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(bytes);
+            }
         }
     }
 
